@@ -5,6 +5,7 @@ from copy import deepcopy
 
 from matplotlib.backends.backend_pdf import PdfPages
 from result_manager.result_manager import ResultManager
+from lgnpy.run_LGNstatistics import loadmat
 
 
 def weibullNewtonHist(g, x, h):
@@ -244,7 +245,10 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
     # Check if file exists
     file_name = f"results_{file_name}.npy"
     if file_name is not None and not force_recompute:
-        results = result_manager.load_result(filename=file_name)
+        try:
+            results = result_manager.load_result(filename=file_name)
+        except:
+            results = None
     else:
         results = None
     
@@ -336,7 +340,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                 if verbose:
                     print("Local COV 1")
                 s1 = local_cov(o1, sigma)
-                e1 = (o1 * np.max(o1, axis=0) / (o1 + np.max(o1, axis=0) * s1))
+                e1 = ((o1 * np.max(o1)) / (o1 + np.max(o1) * s1))
                 minm1 = e1 - t1
                 index1 = (minm1 > 0.0000001)
                 if iteration_index == 0:
@@ -348,7 +352,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                     if verbose:
                         print("Local COV 2")
                     s2 = local_cov(o2, sigma)
-                    e2 = (o2 * np.max(o2, axis=0) / (o2 + np.max(o2, axis=0) * s2))
+                    e2 = ((o2 * np.max(o2)) / (o2 + np.max(o2) * s2))
                     minm2 = e2 - t2
                     index2 = (minm2 > 0.0000001)
                     if iteration_index == 0:
@@ -359,7 +363,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                     if verbose:
                         print("Local COV 3")
                     s3 = local_cov(o3, sigma)
-                    e3 = (o3 * np.max(o3, axis=0) / (o3 + np.max(o3, axis=0) * s3))
+                    e3 = ((o3 * np.max(o3)) / (o3 + np.max(o3) * s3))
                     minm3 = e3 - t3
                     index3 = (minm3 > 0.0000001)
                     if iteration_index == 0:
@@ -427,15 +431,12 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
     if verbose:
         print("Compute SC")
     magnitude = np.abs(mag1[imfovgamma])
-    # sc.append(np.mean(magnitude))
-    sc[0,0,0] = np.mean(magnitude)
+    sc[0,0,0] = np.mean(magnitude) / np.std(magnitude)
     if IMTYPE == 2:
         magnitude = np.abs(mag2[imfovgamma])
-        # sc.append(np.mean(magnitude))
-        sc[1,0,0] = np.mean(magnitude)
+        sc[1,0,0] = np.mean(magnitude) / np.std(magnitude)
         magnitude = np.abs(mag3[imfovgamma])
-        # sc.append(np.mean(magnitude))
-        sc[2,0,0] = np.mean(magnitude)
+        sc[2,0,0] = np.mean(magnitude) / np.std(magnitude)
 
     # if compute_extra_statistics:
     #     # Peripherie
@@ -448,31 +449,31 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
     #             np.abs(mag2[mask])), np.mean(np.abs(mag3[mask]))])
     if compute_extra_statistics:
         # Peripherie
-        peri = np.mean(np.abs(mag1[~imfovgamma]))
-        sc[0, 0, 1] = peri
+        peri = np.abs(mag1[~imfovgamma])
+        sc[0, 0, 1] = np.mean(peri) / np.std(peri)
 
         if IMTYPE == 2:
-            peri = np.mean(np.abs(mag2[~imfovgamma]))
-            sc[1, 0, 1] = peri
-            peri = np.mean(np.abs(mag3[~imfovgamma]))
-            sc[2, 0, 1] = peri
+            peri = np.abs(mag2[~imfovgamma])
+            sc[1, 0, 1] = np.mean(peri) / np.std(peri)
+            peri = np.abs(mag3[~imfovgamma])
+            sc[2, 0, 1] = np.mean(peri) / np.std(peri)
         
         # Custom boxes (crops)
         for mask_index, mask in enumerate(crop_masks):
-            box_center = np.mean(np.abs(mag1[mask]))
-            sc[0, mask_index+1, 0] = box_center
-            box_peri = np.mean(np.abs(mag1[~mask]))
-            sc[0, mask_index+1, 1] = box_peri
+            box_center = np.abs(mag1[mask])
+            sc[0, mask_index+1, 0] = np.mean(box_center) / np.std(box_center)
+            box_peri = np.abs(mag1[~mask])
+            sc[0, mask_index+1, 1] = np.mean(box_peri) / np.std(box_peri)
 
             if IMTYPE == 2:
-                box_center = np.mean(np.abs(mag2[mask]))
-                sc[1, mask_index+1, 0] = box_center
-                box_peri = np.mean(np.abs(mag2[~mask]))
-                sc[1, mask_index+1, 1] = box_peri
-                box_center = np.mean(np.abs(mag3[mask]))
-                sc[2, mask_index+1, 0] = box_center
-                box_peri = np.mean(np.abs(mag3[~mask]))
-                sc[2, mask_index+1, 1] = box_peri
+                box_center = np.abs(mag2[mask])
+                sc[1, mask_index+1, 0] = np.mean(box_center) / np.std(box_center)
+                box_peri = np.abs(mag2[~mask])
+                sc[1, mask_index+1, 1] = np.mean(box_peri) / np.std(box_peri)
+                box_center = np.abs(mag3[mask])
+                sc[2, mask_index+1, 0] = np.mean(box_center) / np.std(box_center)
+                box_peri = np.abs(mag3[~mask])
+                sc[2, mask_index+1, 1] = np.mean(box_peri) / np.std(box_peri)
 
     #################
     # Compute Weibull parameters beta and gamma

@@ -1,0 +1,11 @@
+image_folder: '/home/niklas/projects/data/oads/oads_arw/tiff'
+
+file_types: 
+  - 'jpg'
+  - 'jpeg'
+  - 'bmp'
+  - 'png'
+  - 'tif'
+  - 'tiff'
+
+threshold_lgn_file_path: '/home/niklas/projects/lgnpy/ThresholdLGN.mat'
