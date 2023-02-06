@@ -1,51 +1,10 @@
 import cv2
-import csv
 import os
-import numpy as np
-# from lgn_statistics import *
-from lgnpy.CEandSC.lgn_statistics import *
-import mat73
-from scipy import io
+from lgnpy.CEandSC.lgn_statistics import lgn_statistics
 from result_manager.result_manager import ResultManager
-
-def loadmat(filepath: str, use_attrdict=True):
-    """Combined functionality of scipy.io.loadmat and mat73.loadmat in order to load any .mat version into a python dictionary.
-
-
-
-        Parameters
-        ----------
-        filepath: str
-            Path to file.
-
-        Returns
-        ----------
-        any | dict
-            Loaded datastructure.
-
-        Example
-        ----------
-        >>> data = config.loadmat(filepath)
-    """
-    try:
-        data = mat73.loadmat(filepath, use_attrdict=use_attrdict)
-        return data
-        # data = {}
-        # with h5py.File(filepath, 'r') as f:
-        #     for k in f.keys():
-        #         data[k] = dict(f.get(k))
-
-        #     return data
-
-    except (NotImplementedError, OSError, TypeError) as e:
-        print(
-            "Could not load mat file with mat73 - trying to load with scipy.io.loadmat!")
-        # if version is <7.2
-        data = io.loadmat(filepath)
-        return data
+from oads_access.utils import loadmat
 
 def run_LGNstatistics():
-
     # folder = '\\wsl.localhost\Ubuntu\home\niklas\projects\mouse_lgn\data\natural_scene_templates'
     # folder = '\\wsl.localhost\\Ubuntu\\home\\niklas\\projects\\data\\oads\\oads_arw\\tiff'
     folder = '/home/niklas/projects/data/oads/oads_arw/tiff'

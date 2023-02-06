@@ -1,6 +1,7 @@
 import warnings
 import cv2
 import numpy as np
+import torch
 from scipy.interpolate import interp1d
 from copy import deepcopy
 
@@ -73,20 +74,31 @@ def local_cov(e, sigma):
     filter_size = np.round(break_off_sigma * sigma)
     h = matlab_style_gauss2D((filter_size, filter_size), sigma)
 
-    # term1 = convolve(e**2, h, mode='nearest')
-    # term2 = convolve(e, h, mode='nearest')**2
-    # term1 = correlate(e**2, h, mode='constant', origin=-1)
-    # term2 = correlate(e, h, mode='constant', origin=-1)**2
-    term1 = cv2.filter2D(e**2, -1, h, borderType=cv2.BORDER_REPLICATE)
-    term2 = cv2.filter2D(e, -1, h, borderType=cv2.BORDER_REPLICATE)**2
-    local_std = np.sqrt(np.maximum(term1 - term2, np.zeros(term1.shape)))
+    h_shape = h.shape[0]
+    e_shape = (1,1, e.shape[0], e.shape[1])
+    e = e.reshape(e_shape)
+    h = torch.tensor(h, device='cuda', dtype=torch.float64).reshape((1,1,h_shape,h_shape)).float()
 
-    # local_mean = convolve2d(e, h, mode='nearest') + np.finfo(float).tiny
-    # local_mean = correlate(e, h, mode='constant', origin=-1) + np.finfo(float).tiny
-    local_mean = cv2.filter2D(
-        e, -1, h, borderType=cv2.BORDER_REPLICATE) + np.finfo(float).tiny
+    # term1 = cv2.filter2D(e_n**2, -1, h_n, borderType=cv2.BORDER_REPLICATE)
+    term1_t = torch.nn.functional.conv2d(e**2, h, padding='same')
+    # term2 = cv2.filter2D(e_n, -1, h_n, borderType=cv2.BORDER_REPLICATE)**2
+    term2_t = torch.nn.functional.conv2d(e, h, padding='same')**2
 
-    return local_std / local_mean
+    term1_t = term1_t.squeeze()
+    term2_t = term2_t.squeeze()
+
+
+
+    # local_std = np.sqrt(np.maximum(term1 - term2, np.zeros(term1.shape)))
+    local_std_t = torch.sqrt(torch.maximum(term1_t - term2_t, torch.zeros(term1_t.shape, device='cuda')))
+
+    # local_mean = cv2.filter2D(
+        # e_n, -1, h_n, borderType=cv2.BORDER_REPLICATE) + np.finfo(float).tiny
+
+    local_mean_t = torch.nn.functional.conv2d(e, h.reshape((1,1,h_shape,h_shape)), padding='same').squeeze() + torch.finfo(float).tiny
+
+    # return local_std / local_mean
+    return local_std_t / local_mean_t
 
 
 def create_hist(data, h_bins):
@@ -146,7 +158,7 @@ def conv2padded(varargin):
         else:
             vertical = 1
             horizontal = h.shape[0]
-            h = np.resize(h, (1, h.shape[0]))
+        h = torch.reshape(h, (1, 1, vertical, horizontal))
 
         top = int(np.ceil(vertical / 2) - 1)
         bottom = int(np.floor(vertical / 2))
@@ -163,7 +175,7 @@ def conv2padded(varargin):
         raise AttributeError()
 
     # pad the input image
-    x_padded = np.pad(x, pad_width=[(top, bottom), (left, right)], mode='edge')
+    x_padded = torch.Tensor(np.pad(x.cpu(), pad_width=[(top, bottom), (left, right)], mode='edge'))
 
     def conv2(v1, v2, m, mode='same'):
         """
@@ -175,18 +187,17 @@ def conv2padded(varargin):
         from https://stackoverflow.com/questions/24231285/is-there-a-python-equivalent-to-matlabs-conv2h1-h2-a-same
 
         """
-        tmp = np.apply_along_axis(np.convolve, 0, m, v1, mode)
-        return np.apply_along_axis(np.convolve, 1, tmp, v2, mode)
+        tmp = np.apply_along_axis(torch.conv2d, 0, m, v1, mode)
+        return np.apply_along_axis(torch.conv2d, 1, tmp, v2, mode)
 
     if x.ndim == 2:
-        x.resize((x.shape[0], x.shape[1], 1))
-        x_padded.resize((x_padded.shape[0], x_padded.shape[1], 1))
+        x = x.reshape((1,1,x.shape[0], x.shape[1]))
+        x_padded = x_padded.reshape((1,1,x_padded.shape[0], x_padded.shape[1]))
 
-    for p in range(x.shape[2]):
+    for p in range(x.shape[1]):
         if len(varargin) == 2:
-            # ans1 = convolve2d(x_padded[:,:,p], h, mode='valid')
-            ans2 = cv2.filter2D(x[:,:,p], -1, h, borderType=cv2.BORDER_REPLICATE)
-            x[:, :, p] = ans2
+            ans2 = torch.nn.functional.conv2d(x_padded.to(torch.device('cuda')), h, padding='valid')
+            x[:, p, :] = ans2.squeeze()
         else:
             x[:, :, p] = conv2(h1, h2, x_padded[:, :, p], mode='valid')
 
@@ -196,10 +207,10 @@ def conv2padded(varargin):
 def filter_lgn(im, sigma):
     break_off_sigma = 3
     filter_size = break_off_sigma * sigma
-    x = np.array([i for i in range(-filter_size, filter_size+1)])
+    x = torch.tensor([i for i in range(-filter_size, filter_size+1)], device='cuda')
 
     gauss = 1 / (np.sqrt(2*np.pi) * sigma) * \
-        np.exp((x**2) / (-2 * sigma * sigma))
+        torch.exp((x**2) / (-2 * sigma * sigma))
     Gx = (x**2 / np.power(sigma, 4) - 1/sigma**2) * gauss
     Gx = Gx - sum(Gx) / len(x)
     Gx = Gx / sum(0.5 * x * x * Gx)
@@ -208,11 +219,14 @@ def filter_lgn(im, sigma):
     Gy = Gy - sum(Gy) / len(x)
     Gy = Gy / sum(0.5 * x * x * Gy)
 
+    Gx = Gx.to(torch.device('cuda'))
+    Gy = Gy.to(torch.device('cuda'))
+
     if im.shape[2] == 1:
-        im = im / np.max(im)
+        im = im / torch.max(im)
         Ex = conv2padded((deepcopy(im), Gx))
-        Ey = conv2padded((deepcopy(im), np.matrix(Gy).H))
-        e = np.sqrt(Ex**2 + Ey**2)
+        Ey = conv2padded((deepcopy(im), Gy.conj()))
+        e = torch.sqrt(Ex**2 + Ey**2)
         el = []
         ell = []
 
@@ -221,24 +235,24 @@ def filter_lgn(im, sigma):
 
         # im = e
         Ex = conv2padded((deepcopy(e), Gx))
-        Ey = conv2padded((deepcopy(e), np.matrix(Gy).H))
-        e = np.sqrt(Ex**2 + Ey**2).squeeze()
+        Ey = conv2padded((deepcopy(e), Gy.conj()))
+        e = torch.sqrt(Ex**2 + Ey**2).squeeze()
 
         # im = el
         Elx = conv2padded((deepcopy(el), Gx))
-        Ely = conv2padded((deepcopy(el), np.matrix(Gy).H))
-        el = np.sqrt(Elx**2 + Ely**2).squeeze()
+        Ely = conv2padded((deepcopy(el), Gy.conj()))
+        el = torch.sqrt(Elx**2 + Ely**2).squeeze()
 
         # im = ell
         Ellx = conv2padded((deepcopy(ell), Gx))
-        Elly = conv2padded((deepcopy(ell), np.matrix(Gy).H))
-        ell = np.sqrt(Ellx**2 + Elly**2).squeeze()
+        Elly = conv2padded((deepcopy(ell), Gy.conj()))
+        ell = torch.sqrt(Ellx**2 + Elly**2).squeeze()
 
     return e, el, ell
 
 
-def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0.00035, fov_beta=1.5, fov_gamma=5, 
-                    verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
+def lgn_statistics_cuda(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0.00035, fov_beta=1.5, fov_gamma=5, 
+                    verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False):
 
     result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache')
 
@@ -289,11 +303,11 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
     imfovgamma = (ec < fov_gamma)
 
 
-    # ce = [] # (color_channels, (full+boxes), center-peripherie)
+    # (color_channels, (full+boxes), center-peripherie)
     ce = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
-    # ce_extra = []
     sc = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
-    # sc_extra = []
+    # ce = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
+    # sc = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
     beta = [] # TODO also change beta, gamma to the center+peripherie computation
     gamma = []
     # beta = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
@@ -341,6 +355,11 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                 if verbose:
                     print("Local COV 1")
                 s1 = local_cov(o1, sigma)
+                s1 = s1.cpu().numpy()
+
+                o1 = o1.cpu().numpy()
+
+
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", category=RuntimeWarning)
                     e1 = ((o1 * np.max(o1)) / (o1 + np.max(o1) * s1))
@@ -355,6 +374,10 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                     if verbose:
                         print("Local COV 2")
                     s2 = local_cov(o2, sigma)
+                    s2 = s2.cpu().numpy()
+
+                    o2 = o2.cpu().numpy()
+
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore", category=RuntimeWarning)
                         e2 = ((o2 * np.max(o2)) / (o2 + np.max(o2) * s2))
@@ -368,6 +391,10 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                     if verbose:
                         print("Local COV 3")
                     s3 = local_cov(o3, sigma)
+                    s3 = s3.cpu().numpy()
+
+                    o3 = o3.cpu().numpy()
+
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore", category=RuntimeWarning)
                         e3 = ((o3 * np.max(o3)) / (o3 + np.max(o3) * s3))
@@ -379,11 +406,10 @@ def lgn_statistics(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0
                         mag3[index3] = minm3[index3]
 
     
-        if cache:
-            results = np.array((par1, par2, par3, mag1, mag2, mag3))
-            result_manager.save_result(result=results, filename=file_name, overwrite=True)
-            print('Done saving')
-            del results
+        results = np.array((par1, par2, par3, mag1, mag2, mag3))
+        result_manager.save_result(result=results, filename=file_name, overwrite=True)
+        print('Done saving')
+        del results
     else:
         par1, par2, par3, mag1, mag2, mag3 = results
     ##############
