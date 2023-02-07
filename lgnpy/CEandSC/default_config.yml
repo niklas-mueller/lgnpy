@@ -1,0 +1,31 @@
+break_off_sigma: 3
+viewing_dist: 1
+dot_pitch: 0.00035
+fov_beta: 1.5
+fov_gamma: 5 
+
+eps: 0.0000001
+
+parvo_sigmas: 
+  - 48
+  - 24
+  - 12
+  - 6
+  - 3
+
+magno_sigmas: 
+  - 64
+  - 32
+  - 16
+  - 8
+  - 4
+
+interpolation_sigmas:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+
+n_bins_weibull: 1000
