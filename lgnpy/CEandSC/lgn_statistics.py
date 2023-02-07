@@ -4,7 +4,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 from copy import deepcopy
 import yaml
-
+from scipy.stats import zscore
+from sklearn.linear_model import LinearRegression
 from matplotlib.backends.backend_pdf import PdfPages
 from result_manager.result_manager import ResultManager
 
@@ -49,8 +50,9 @@ class LGN():
                         x_g * np.log(x))) / (sum_x_g ** 2)
         f = 1 + np.sum(ln_x_i * h) - np.sum(x_i * ln_x_i * h)
         f_prime = np.sum(_lambda * h * (sum_x_g / x_g - ln_x_i - 1))
-
-        return f / f_prime
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            return f / f_prime
 
 
     def weibullMleHist(self, ax, h):
@@ -261,6 +263,20 @@ class LGN():
             ell = np.sqrt(Ellx**2 + Elly**2).squeeze()
 
         return e, el, ell
+
+def regress(y, design_matrix):
+    mask = np.isnan(y)
+    x = design_matrix[~mask]
+    y = zscore(y[~mask])
+    if x.shape[0] == 0 or y.shape[0] == 0:
+        # r2s.append(-1)
+        # continue
+        return -1, 0
+
+    lin_reg = LinearRegression().fit(x, y)
+    r2 = lin_reg.score(x,y)
+    beta = lin_reg.coef_
+    return r2, beta
 
 
 def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
