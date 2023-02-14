@@ -29,3 +29,16 @@ interpolation_sigmas:
   - 32
 
 n_bins_weibull: 1000
+
+color_weighting_e:
+  - 0.3
+  - 0.58
+  - 0.11
+color_weighting_el:
+  - 0.25
+  - 0.25
+  - -0.5
+color_weighting_ell:
+  - 0.5
+  - -0.5
+  - 0.0

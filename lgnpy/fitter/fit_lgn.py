@@ -22,7 +22,7 @@ def iteration(args):
     im = Image.open(os.path.join('/home/niklas/projects/eeg_jneurosc13/allstim/', image_name))
     im = np.array(im)
 
-    (ce, sc, _, _) = lgn_statistics(im=im, file_name=image_name, config=config, threshold_lgn=threshold_lgn)
+    (ce, sc, _, _) = lgn_statistics(im=im, file_name=image_name, config=config, threshold_lgn=threshold_lgn, cache=False, force_recompute=False)
 
     return ce, sc, image_index
 
@@ -33,7 +33,7 @@ def get_sc_ce(image_names, config, threshold_lgn):
     scs = np.zeros((len(image_names), 3, 1, 2))
 
 
-    with multiprocessing.Pool() as pool:
+    with multiprocessing.Pool(8) as pool:
         results = list(tqdm.tqdm(pool.imap(iteration, [(image_name, index, config, threshold_lgn) for index, image_name in enumerate(image_names)]), total=len(image_names)))
     
     for ce, sc, index in results:
@@ -75,6 +75,7 @@ def regression(ces, scs):
     beta_sensors = {}
     
     # Iterate over sensors
+    sensors = ['AF3', 'AF4', 'AF7', 'AF8', 'AFz', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'CP1', 'CP2', 'CP3', 'CP4', 'CP5', 'CP6', 'CPz', 'Cz', 'F1', 'F2', 'F3', 'F4', 'F7', 'F8', 'FC1', 'FC2', 'FC3', 'FC4', 'FC5', 'FC6', 'FCz', 'FT7', 'FT8', 'Fp1', 'Fp2', 'Fpz', 'Fz', 'I1', 'I2', 'Iz', 'O1', 'O2', 'Oz', 'P1', 'P10', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'PO3', 'PO4', 'PO7', 'PO8', 'POz', 'Pz', 'T7', 'T8', 'TP7', 'TP8']
     for sensor_index, sensor in [(i, _x) for i, _x in enumerate(sensors)]: #  if 'O' in _x
         r2_subjects = {}
         beta_subjects = {}
@@ -96,8 +97,8 @@ def regression(ces, scs):
             r2_subjects[subject] = r2s
             beta_subjects[subject] = betas
 
-    r2_sensors[sensor] = r2_subjects
-    beta_sensors[sensor] = beta_subjects
+        r2_sensors[sensor] = r2_subjects
+        beta_sensors[sensor] = beta_subjects
     
     return (r2_sensors, beta_sensors)
 
@@ -112,7 +113,7 @@ def comb(image_names, threshold_lgn, config):
 
 if __name__ == '__main__':
 
-    force_recompute = True
+    force_recompute = False
     root = '/home/niklas/projects/eeg_jneurosc13/allstim/'
 
     ################
@@ -123,20 +124,19 @@ if __name__ == '__main__':
     del erp
 
     configs = [
-            {
-                'viewing_dist': 0.5
-            },
-            {
-                'viewing_dist': 1
-            },
-            {
-                'viewing_dist': 2
-            },
-            # {
-            #     'viewing_dist': 5
-            # }
-        ]
+        # {}
+        {
+            'color_weighting_e': [0.3, 0.58, 0.11],
+            'color_weighting_el': [0.25, 0.25, -0.5],
+            'color_weighting_ell': [0.5, -0.5, 0.0]
+        },
+        {
+            'color_weighting_e': [0.06, 0.63, 0.27],
+            'color_weighting_el': [0.3, 0.04, -0.35],
+            'color_weighting_ell': [0.34, -0.6, 0.17]
 
+        }
+    ]
 
     if force_recompute:
         ################
@@ -156,7 +156,7 @@ if __name__ == '__main__':
             res.append(comb(image_names=image_names, threshold_lgn=threshold_lgn, config=config))
 
         ################
-        result_manager.save_result(result=res, filename='full_fitting_results.pkl')
+        result_manager.save_result(result=res, filename='full_fitting_results.pkl', overwrite=True)
 
     else:
         res = result_manager.load_result(filename='full_fitting_results.pkl')
@@ -167,6 +167,7 @@ if __name__ == '__main__':
     figs = []
     for sensor_index, sensor in enumerate(res[0][0].keys()):
         fig, ax = plt.subplots(len(configs), 1, figsize=(15,len(configs)*5))
+        # ax = [ax]
 
         for index, _ in enumerate(configs):
             for sub in range(14):
@@ -174,6 +175,7 @@ if __name__ == '__main__':
                     ax[index].plot(res[index][0][sensor][sub])
 
             ax[index].plot(np.mean(np.array([x for _, x in res[index][0][sensor].items()]), axis=0), 'k', linewidth=4.0)
+            ax[index].set_title(sensor)
 
         figs.append(fig)
 

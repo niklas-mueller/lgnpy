@@ -141,9 +141,13 @@ class LGN():
 
         # JMG: slightly different values than in PAMI 2001 paper;
         # simply assuming correctly white balanced camera
-        E = (0.3*R + 0.58*G + 0.11*B) / 255.0
-        El = (0.25*R + 0.25*G - 0.5*B) / 255.0
-        Ell = (0.5*R - 0.5*G) / 255.0
+        color_weighting_e = self.get_attr('color_weighting_e') #= [0.3, 0.58, 0.11]
+        color_weighting_el = self.get_attr('color_weighting_el') #= [0.25, 0.25, -0.5]
+        color_weighting_ell = self.get_attr('color_weighting_ell') #= [0.5, -0.5]
+
+        E = (color_weighting_e[0]*R + color_weighting_e[1]*G + color_weighting_e[2]*B) / 255.0
+        El = (color_weighting_el[0]*R + color_weighting_el[1]*G + color_weighting_el[2]*B) / 255.0
+        Ell = (color_weighting_ell[0]*R + color_weighting_ell[1]*G + color_weighting_ell[2]*B) / 255.0
 
         # # As in original in PAMI 2001 paper
         # E   = (0.06*R + 0.63*G + 0.27*B ) / 255.0
@@ -281,14 +285,14 @@ def regress(y, design_matrix):
 
 def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
 
-    result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache')
+    result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache', verbose=False)
 
     lgn = LGN(config=config, default_config_path='/home/niklas/projects/lgnpy/lgnpy/CEandSC/default_config.yml')
 
-    if verbose:
-        print(f"Computing LGN statistics for {file_name}")
+    # if verbose:
+    print(f"Computing LGN statistics for {file_name}")
     # Check if file exists
-    file_name = f"results_{file_name}.npy"
+    file_name = f"results_{file_name}.npz"
     if file_name is not None and not force_recompute:
         try:
             results = result_manager.load_result(filename=file_name)
@@ -314,38 +318,56 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
     #######################################################
     # Set parameters for field of view
     #######################################################
+    def get_field_of_view(lgn, imsize, viewing_dist):
+        # if viewing_dist is None:
+        #     viewing_dist = lgn.get_attr('viewing_dist')
+        dot_pitch = lgn.get_attr('dot_pitch')
+        fov_beta = lgn.get_attr('fov_beta')
+        fov_gamma = lgn.get_attr('fov_gamma')
+
+        fovx = round(imsize[1]/2)          # x-pixel loc. of fovea center
+        fovy = round(imsize[0]/2)          # y-pixel loc. of fovea center
+        # ex and ey are the x- and y- offsets of each pixel compared to
+        # the point of focus (fovx,fovy) in pixels.
+        ex, ey = np.meshgrid(np.arange(start=-fovx+1, stop=imsize[1]-fovx+1),
+                            np.arange(start=-fovy+1, stop=imsize[0]-fovy+1))
+        # eradius is the radial distance between each point and the point
+        # of gaze.  This is in meters.
+        eradius = dot_pitch * np.sqrt(ex**2+ey**2)
+        del ex, ey
+        # calculate ec, the eccentricity from the foveal center, for each
+        # point in the image.  ec is in degrees.
+        ec = 180*np.arctan(eradius / viewing_dist)/np.pi
+        # select the pixels that fall within the input visual field of view
+        imfovbeta = (ec < fov_beta)
+        imfovgamma = (ec < fov_gamma)
+
+        return imfovbeta, imfovgamma
+
     viewing_dist = lgn.get_attr('viewing_dist')
-    dot_pitch = lgn.get_attr('dot_pitch')
-    fov_beta = lgn.get_attr('fov_beta')
-    fov_gamma = lgn.get_attr('fov_gamma')
+    imfovbeta, imfovgamma = get_field_of_view(lgn=lgn, imsize=imsize, viewing_dist=viewing_dist)
 
-    fovx = round(imsize[1]/2)          # x-pixel loc. of fovea center
-    fovy = round(imsize[0]/2)          # y-pixel loc. of fovea center
-    # ex and ey are the x- and y- offsets of each pixel compared to
-    # the point of focus (fovx,fovy) in pixels.
-    ex, ey = np.meshgrid(np.arange(start=-fovx+1, stop=imsize[1]-fovx+1),
-                        np.arange(start=-fovy+1, stop=imsize[0]-fovy+1))
-    # eradius is the radial distance between each point and the point
-    # of gaze.  This is in meters.
-    eradius = dot_pitch * np.sqrt(ex**2+ey**2)
-    del ex, ey
-    # calculate ec, the eccentricity from the foveal center, for each
-    # point in the image.  ec is in degrees.
-    ec = 180*np.arctan(eradius / viewing_dist)/np.pi
-    # select the pixels that fall within the input visual field of view
-    imfovbeta = (ec < fov_beta)
-    imfovgamma = (ec < fov_gamma)
+    # We need adjusted imfovbeta, imfovgamma for the crops
+    imfovbeta_crops = [[] for _ in range(len(crop_masks))]
+    imfovgamma_crops = [[] for _ in range(len(crop_masks))]
+    for index, mask in enumerate(crop_masks):
+        _x = mask.sum(axis=0)
+        mask_height = _x[_x > 0][0]
+        _x = mask.sum(axis=1)
+        mask_width = _x[_x > 0][0]
+        mask_imsize = (mask_height, mask_width)
+
+        mask_viewing_dist = np.mean(np.array(mask_imsize) / np.array(imsize)) * viewing_dist
+        _imbeta, _imgamma = get_field_of_view(lgn=lgn, imsize=mask_imsize, viewing_dist=mask_viewing_dist)
+        imfovbeta_crops[index] = _imbeta
+        imfovgamma_crops[index] = _imgamma
 
 
-    # ce = [] # (color_channels, (full+boxes), center-peripherie)
+    # (color_channels, (full+boxes), center-peripherie)
     ce = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
-    # ce_extra = []
     sc = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
-    # sc_extra = []
-    beta = [] # TODO also change beta, gamma to the center+peripherie computation
-    gamma = []
-    # beta = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
-    # gamma = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
+    beta = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
+    gamma = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
 
     if force_recompute or results is None:
 
@@ -436,30 +458,38 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
 
     
         if cache:
-            results = np.array((par1, par2, par3, mag1, mag2, mag3))
+            # results = np.array((par1, par2, par3, mag1, mag2, mag3))
+            # result_manager.save_result(result=results, filename=file_name, overwrite=True)
+            results = {"par1": par1, "par2": par2, "par3": par3, "mag1": mag1, "mag2": mag2, "mag3": mag3}
             result_manager.save_result(result=results, filename=file_name, overwrite=True)
-            print('Done saving')
             del results
     else:
-        par1, par2, par3, mag1, mag2, mag3 = results
+        # par1, par2, par3, mag1, mag2, mag3 = results
+        par1, par2, par3, mag1, mag2, mag3 = results['par1'], results['par2'], results['par3'], results['mag1'], results['mag2'], results['mag3']
+
     ##############
     # Compute Feature Energy and Spatial Coherence
     ##############
+
+    def get_crop_masks(fov, mask):
+        _start_x = mask.sum(axis=1).argmax()
+        _start_y = mask.sum(axis=0).argmax()
+        c_mask = np.zeros(mask.shape, dtype=np.bool8)
+        c_mask[_start_x:_start_x+fov.shape[0], _start_y:_start_y+fov.shape[1]] = fov * mask[mask].reshape(fov.shape)
+        c_mask_peri = np.zeros(mask.shape, dtype=np.bool8)
+        c_mask_peri[_start_x:_start_x+fov.shape[0], _start_y:_start_y+fov.shape[1]] = (~fov) * mask[mask].reshape(fov.shape)
+        return c_mask, c_mask_peri
 
     if verbose:
         print("Compute CE")
 
     magnitude = np.abs(par1[imfovbeta])
-    # magnitude = np.abs(par1[~imfovbeta]) # Here we can select the pixels that lie OUTSIDE the fovea and compute SC/CE on those instead
     # Full scene, red/gray
-    # ce.append(np.mean(magnitude))
     ce[0, 0, 0] = np.mean(magnitude)
     if IMTYPE == 2:
         magnitude = np.abs(par2[imfovbeta])
-        # ce.append(np.mean(magnitude))
         ce[1, 0, 0] = np.mean(magnitude)
         magnitude = np.abs(par3[imfovbeta])
-        # ce.append(np.mean(magnitude))
         ce[2,0,0] = np.mean(magnitude)
 
     if compute_extra_statistics:
@@ -475,23 +505,23 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
         
         # Custom boxes (crops)
         for mask_index, mask in enumerate(crop_masks):
-            box_center = np.mean(np.abs(par1[mask]))
+            c_mask, c_mask_peri = get_crop_masks(imfovbeta_crops[mask_index], mask)
+
+            box_center = np.mean(np.abs(par1[c_mask]))
             ce[0, mask_index+1, 0] = box_center
-            box_peri = np.mean(np.abs(par1[~mask]))
+            box_peri = np.mean(np.abs(par1[c_mask_peri]))
             ce[0, mask_index+1, 1] = box_peri
 
             if IMTYPE == 2:
-                box_center = np.mean(np.abs(par2[mask]))
+                box_center = np.mean(np.abs(par2[c_mask]))
                 ce[1, mask_index+1, 0] = box_center
-                box_peri = np.mean(np.abs(par2[~mask]))
+                box_peri = np.mean(np.abs(par2[c_mask_peri]))
                 ce[1, mask_index+1, 1] = box_peri
-                box_center = np.mean(np.abs(par3[mask]))
+                box_center = np.mean(np.abs(par3[c_mask]))
                 ce[2, mask_index+1, 0] = box_center
-                box_peri = np.mean(np.abs(par3[~mask]))
+                box_peri = np.mean(np.abs(par3[c_mask_peri]))
                 ce[2, mask_index+1, 1] = box_peri
 
-            # ce_extra.append([, np.mean(
-            #     np.abs(par2[mask])), np.mean(np.abs(par3[mask]))])
 
     if verbose:
         print("Compute SC")
@@ -516,19 +546,21 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
         
         # Custom boxes (crops)
         for mask_index, mask in enumerate(crop_masks):
-            box_center = np.abs(mag1[mask])
+            c_mask, c_mask_peri = get_crop_masks(imfovgamma_crops[mask_index], mask)
+
+            box_center = np.abs(mag1[c_mask])
             sc[0, mask_index+1, 0] = np.mean(box_center) / np.std(box_center)
-            box_peri = np.abs(mag1[~mask])
+            box_peri = np.abs(mag1[c_mask_peri])
             sc[0, mask_index+1, 1] = np.mean(box_peri) / np.std(box_peri)
 
             if IMTYPE == 2:
-                box_center = np.abs(mag2[mask])
+                box_center = np.abs(mag2[c_mask])
                 sc[1, mask_index+1, 0] = np.mean(box_center) / np.std(box_center)
-                box_peri = np.abs(mag2[~mask])
+                box_peri = np.abs(mag2[c_mask_peri])
                 sc[1, mask_index+1, 1] = np.mean(box_peri) / np.std(box_peri)
-                box_center = np.abs(mag3[mask])
+                box_center = np.abs(mag3[c_mask])
                 sc[2, mask_index+1, 0] = np.mean(box_center) / np.std(box_center)
-                box_peri = np.abs(mag3[~mask])
+                box_peri = np.abs(mag3[c_mask_peri])
                 sc[2, mask_index+1, 1] = np.mean(box_peri) / np.std(box_peri)
 
     #################
@@ -542,30 +574,85 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
     n_bins = lgn.get_attr('n_bins_weibull')
     magnitude = np.abs(par1[imfovbeta])
     ax, h = lgn.create_hist(magnitude, n_bins)
-    beta.append(lgn.weibullMleHist(ax, h)[0])
+    # beta.append(lgn.weibullMleHist(ax, h)[0])
+    beta[0,0,0] = lgn.weibullMleHist(ax, h)[0]
 
     if IMTYPE == 2:
         magnitude = np.abs(par2[imfovbeta])
         ax, h = lgn.create_hist(magnitude, n_bins)
-        beta.append(lgn.weibullMleHist(ax, h)[0])
+        # beta.append(lgn.weibullMleHist(ax, h)[0])
+        beta[1,0,0] = lgn.weibullMleHist(ax, h)[0]
 
         magnitude = np.abs(par3[imfovbeta])
         ax, h = lgn.create_hist(magnitude, n_bins)
-        beta.append(lgn.weibullMleHist(ax, h)[0])
+        # beta.append(lgn.weibullMleHist(ax, h)[0])
+        beta[2,0,0] = lgn.weibullMleHist(ax, h)[0]
+
+    # Custom boxes (crops)
+    for mask_index, mask in enumerate(crop_masks):
+        c_mask, c_mask_peri = get_crop_masks(imfovbeta_crops[mask_index], mask)
+
+        box_center = np.abs(par1[c_mask])
+        ax, h = lgn.create_hist(box_center, n_bins)
+        beta[0, mask_index+1, 0] = lgn.weibullMleHist(ax, h)[0]
+        box_peri = np.abs(par1[c_mask_peri])
+        ax, h = lgn.create_hist(box_peri, n_bins)
+        beta[0, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[0]
+
+        if IMTYPE == 2:
+            box_center = np.abs(par2[c_mask])
+            ax, h = lgn.create_hist(box_center, n_bins)
+            beta[1, mask_index+1, 0] = lgn.weibullMleHist(ax, h)[0]
+            box_peri = np.abs(par2[c_mask_peri])
+            ax, h = lgn.create_hist(box_peri, n_bins)
+            beta[1, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[0]
+
+            box_center = np.abs(par3[c_mask])
+            ax, h = lgn.create_hist(box_center, n_bins)
+            beta[2, mask_index+1, 0] = lgn.weibullMleHist(ax, h)[0]
+            box_peri = np.abs(par3[c_mask_peri])
+            ax, h = lgn.create_hist(box_peri, n_bins)
+            beta[2, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[0]
 
     if verbose:
         print("Compute Weibull parameters gamma")
     magnitude = np.abs(mag1[imfovgamma])
     ax, h = lgn.create_hist(magnitude, n_bins)
-    gamma.append(lgn.weibullMleHist(ax, h)[1])
+    gamma[0,0,0] = lgn.weibullMleHist(ax, h)[1]
 
     if IMTYPE == 2:
         magnitude = np.abs(mag2[imfovgamma])
         ax, h = lgn.create_hist(magnitude, n_bins)
-        gamma.append(lgn.weibullMleHist(ax, h)[1])
+        gamma[1,0,0] = lgn.weibullMleHist(ax, h)[1]
 
         magnitude = np.abs(mag3[imfovgamma])
         ax, h = lgn.create_hist(magnitude, n_bins)
-        gamma.append(lgn.weibullMleHist(ax, h)[1])
+        gamma[2,0,0] = lgn.weibullMleHist(ax, h)[1]
+
+    # Custom boxes (crops)
+    for mask_index, mask in enumerate(crop_masks):
+        c_mask, c_mask_peri = get_crop_masks(imfovgamma_crops[mask_index], mask)
+
+        box_center = np.abs(mag1[c_mask])
+        ax, h = lgn.create_hist(box_center, n_bins)
+        beta[0, mask_index+1, 0] = lgn.weibullMleHist(ax, h)[1]
+        box_peri = np.abs(mag1[c_mask_peri])
+        ax, h = lgn.create_hist(box_peri, n_bins)
+        beta[0, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[1]
+
+        if IMTYPE == 2:
+            box_center = np.abs(mag2[c_mask])
+            ax, h = lgn.create_hist(box_center, n_bins)
+            beta[1, mask_index+1, 0] = lgn.weibullMleHist(ax, h)[1]
+            box_peri = np.abs(mag2[c_mask_peri])
+            ax, h = lgn.create_hist(box_peri, n_bins)
+            beta[1, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[1]
+
+            box_center = np.abs(mag3[c_mask])
+            ax, h = lgn.create_hist(box_center, n_bins)
+            beta[2, mask_index+1, 0] = lgn.weibullMleHist(ax, h)[1]
+            box_peri = np.abs(mag3[c_mask_peri])
+            ax, h = lgn.create_hist(box_peri, n_bins)
+            beta[2, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[1]
 
     return (ce, sc, beta, gamma)
