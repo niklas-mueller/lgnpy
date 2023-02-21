@@ -241,10 +241,10 @@ class LGN():
         Gy = Gy / sum(0.5 * x * x * Gy)
 
         if im.shape[2] == 1:
-            im = im / np.max(im)
+            im = (im / np.max(im)).squeeze()
             Ex = self.conv2padded((deepcopy(im), Gx))
             Ey = self.conv2padded((deepcopy(im), np.matrix(Gy).H))
-            e = np.sqrt(Ex**2 + Ey**2)
+            e = np.sqrt(Ex**2 + Ey**2).squeeze()
             el = []
             ell = []
 
@@ -312,6 +312,10 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
         IMTYPE = 1  # Gray
     elif im.shape[-1] == 3:
         IMTYPE = 2  # Color
+    else:
+        IMTYPE = 1
+        # im = im.reshape((im.shape) + (1,))
+        # print(im.shape)        
 
     imsize = im.shape[:2]
 
@@ -369,103 +373,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
     beta = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
     gamma = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
 
-    if force_recompute or results is None:
-
-
-        ######
-        # Computing edges
-        ######
-
-        par1 = np.zeros(imsize)
-        par2 = np.zeros(imsize)
-        par3 = np.zeros(imsize)
-        mag1 = np.zeros(imsize)
-        mag2 = np.zeros(imsize)
-        mag3 = np.zeros(imsize)
-
-        # par_sigmas = [48, 24, 12, 6, 3]
-        # mag_sigmas = [64, 32, 16, 8, 4]
-        parvo_sigmas = lgn.get_attr('parvo_sigmas')
-        magno_sigmas = lgn.get_attr('magno_sigmas')
-
-        interpolation_sigmas = lgn.get_attr('interpolation_sigmas')
-        eps = lgn.get_attr('eps')
-
-        for iteration_index, sigma_iterations in enumerate(np.array([parvo_sigmas, magno_sigmas])):
-            for _, sigma in enumerate(sigma_iterations):
-                if verbose:
-                    print(f"Sigma: {sigma}")
-
-                if verbose:
-                    print('Interpolate')
-                sigmas = np.array(interpolation_sigmas)
-                v1 = np.squeeze(threshold_lgn[:, 0])
-                t1_interp = interp1d(sigmas, v1, kind='linear',
-                                    bounds_error=False, fill_value=np.nan)
-                t1 = t1_interp(sigma)
-                v2 = np.squeeze(threshold_lgn[:, 1])
-                t2_interp = interp1d(sigmas, v2, kind='linear',
-                                    bounds_error=False, fill_value=np.nan)
-                t2 = t2_interp(sigma)
-                v3 = np.squeeze(threshold_lgn[:, 2])
-                t3_interp = interp1d(sigmas, v3, kind='linear',
-                                    bounds_error=False, fill_value=np.nan)
-                t3 = t3_interp(sigma)
-
-                if verbose:
-                    print("Filter LGN")
-                o1, o2, o3 = lgn.filter_lgn(im, sigma)
-
-                if verbose:
-                    print("Local COV 1")
-                s1 = lgn.local_cov(o1, sigma)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=RuntimeWarning)
-                    e1 = ((o1 * np.max(o1)) / (o1 + np.max(o1) * s1))
-                minm1 = e1 - t1
-                index1 = (minm1 > eps)
-                if iteration_index == 0:
-                    par1[index1] = minm1[index1]
-                elif iteration_index == 1:
-                    mag1[index1] = minm1[index1]
-
-                if IMTYPE == 2:
-                    if verbose:
-                        print("Local COV 2")
-                    s2 = lgn.local_cov(o2, sigma)
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", category=RuntimeWarning)
-                        e2 = ((o2 * np.max(o2)) / (o2 + np.max(o2) * s2))
-                    minm2 = e2 - t2
-                    index2 = (minm2 > eps)
-                    if iteration_index == 0:
-                        par2[index2] = minm2[index2]
-                    elif iteration_index == 1:
-                        mag2[index2] = minm2[index2]
-
-                    if verbose:
-                        print("Local COV 3")
-                    s3 = lgn.local_cov(o3, sigma)
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", category=RuntimeWarning)
-                        e3 = ((o3 * np.max(o3)) / (o3 + np.max(o3) * s3))
-                    minm3 = e3 - t3
-                    index3 = (minm3 > eps)
-                    if iteration_index == 0:
-                        par3[index3] = minm3[index3]
-                    elif iteration_index == 1:
-                        mag3[index3] = minm3[index3]
-
-    
-        if cache:
-            # results = np.array((par1, par2, par3, mag1, mag2, mag3))
-            # result_manager.save_result(result=results, filename=file_name, overwrite=True)
-            results = {"par1": par1, "par2": par2, "par3": par3, "mag1": mag1, "mag2": mag2, "mag3": mag3}
-            result_manager.save_result(result=results, filename=file_name, overwrite=True)
-            del results
-    else:
-        # par1, par2, par3, mag1, mag2, mag3 = results
-        par1, par2, par3, mag1, mag2, mag3 = results['par1'], results['par2'], results['par3'], results['mag1'], results['mag2'], results['mag3']
+    par1, par2, par3, mag1, mag2, mag3 = get_edge_maps(im, file_name, threshold_lgn, verbose, force_recompute, cache, result_manager, lgn, results, IMTYPE, imsize)
 
     ##############
     # Compute Feature Energy and Spatial Coherence
@@ -656,3 +564,100 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
             beta[2, mask_index+1, 1] = lgn.weibullMleHist(ax, h)[1]
 
     return (ce, sc, beta, gamma)
+
+def get_edge_maps(im, file_name, threshold_lgn, verbose, force_recompute, cache, result_manager, lgn, results, IMTYPE, imsize):
+    if force_recompute or results is None:
+        ######
+        # Computing edges
+        ######
+        par1 = np.zeros(imsize)
+        par2 = np.zeros(imsize)
+        par3 = np.zeros(imsize)
+        mag1 = np.zeros(imsize)
+        mag2 = np.zeros(imsize)
+        mag3 = np.zeros(imsize)
+
+        # par_sigmas = [48, 24, 12, 6, 3]
+        # mag_sigmas = [64, 32, 16, 8, 4]
+        parvo_sigmas = lgn.get_attr('parvo_sigmas')
+        magno_sigmas = lgn.get_attr('magno_sigmas')
+
+        interpolation_sigmas = lgn.get_attr('interpolation_sigmas')
+        eps = lgn.get_attr('eps')
+
+        for iteration_index, sigma_iterations in enumerate(np.array([parvo_sigmas, magno_sigmas])):
+            for _, sigma in enumerate(sigma_iterations):
+                if verbose:
+                    print(f"Sigma: {sigma}")
+
+                if verbose:
+                    print('Interpolate')
+                sigmas = np.array(interpolation_sigmas)
+                v1 = np.squeeze(threshold_lgn[:, 0])
+                t1_interp = interp1d(sigmas, v1, kind='linear',
+                                    bounds_error=False, fill_value=np.nan)
+                t1 = t1_interp(sigma)
+                v2 = np.squeeze(threshold_lgn[:, 1])
+                t2_interp = interp1d(sigmas, v2, kind='linear',
+                                    bounds_error=False, fill_value=np.nan)
+                t2 = t2_interp(sigma)
+                v3 = np.squeeze(threshold_lgn[:, 2])
+                t3_interp = interp1d(sigmas, v3, kind='linear',
+                                    bounds_error=False, fill_value=np.nan)
+                t3 = t3_interp(sigma)
+
+                if verbose:
+                    print("Filter LGN")
+                o1, o2, o3 = lgn.filter_lgn(im, sigma)
+
+                if verbose:
+                    print("Local COV 1")
+                s1 = lgn.local_cov(o1, sigma)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    e1 = ((o1 * np.max(o1)) / (o1 + np.max(o1) * s1))
+                minm1 = e1 - t1
+                index1 = (minm1 > eps)
+                if iteration_index == 0:
+                    par1[index1] = minm1[index1]
+                elif iteration_index == 1:
+                    mag1[index1] = minm1[index1]
+
+                if IMTYPE == 2:
+                    if verbose:
+                        print("Local COV 2")
+                    s2 = lgn.local_cov(o2, sigma)
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=RuntimeWarning)
+                        e2 = ((o2 * np.max(o2)) / (o2 + np.max(o2) * s2))
+                    minm2 = e2 - t2
+                    index2 = (minm2 > eps)
+                    if iteration_index == 0:
+                        par2[index2] = minm2[index2]
+                    elif iteration_index == 1:
+                        mag2[index2] = minm2[index2]
+
+                    if verbose:
+                        print("Local COV 3")
+                    s3 = lgn.local_cov(o3, sigma)
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=RuntimeWarning)
+                        e3 = ((o3 * np.max(o3)) / (o3 + np.max(o3) * s3))
+                    minm3 = e3 - t3
+                    index3 = (minm3 > eps)
+                    if iteration_index == 0:
+                        par3[index3] = minm3[index3]
+                    elif iteration_index == 1:
+                        mag3[index3] = minm3[index3]
+
+    
+        if cache:
+            # results = np.array((par1, par2, par3, mag1, mag2, mag3))
+            # result_manager.save_result(result=results, filename=file_name, overwrite=True)
+            results = {"par1": par1, "par2": par2, "par3": par3, "mag1": mag1, "mag2": mag2, "mag3": mag3}
+            result_manager.save_result(result=results, filename=file_name, overwrite=True)
+            del results
+    else:
+        # par1, par2, par3, mag1, mag2, mag3 = results
+        par1, par2, par3, mag1, mag2, mag3 = results['par1'], results['par2'], results['par3'], results['mag1'], results['mag2'], results['mag3']
+    return par1,par2,par3,mag1,mag2,mag3
