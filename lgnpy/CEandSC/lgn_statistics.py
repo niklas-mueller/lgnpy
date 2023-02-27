@@ -565,7 +565,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
 
     return (ce, sc, beta, gamma)
 
-def get_edge_maps(im, file_name, threshold_lgn, verbose, force_recompute, cache, result_manager, lgn, results, IMTYPE, imsize):
+def get_edge_maps(im, file_name, threshold_lgn, lgn, IMTYPE, imsize, verbose:bool=False, force_recompute:bool=False, results=None, cache:bool=False, result_manager:ResultManager=None):
     if force_recompute or results is None:
         ######
         # Computing edges
