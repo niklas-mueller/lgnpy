@@ -240,7 +240,7 @@ class LGN():
         Gy = Gy - sum(Gy) / len(x)
         Gy = Gy / sum(0.5 * x * x * Gy)
 
-        if im.shape[2] == 1:
+        if im.ndim == 2 or im.shape[2] == 1:
             im = (im / np.max(im)).squeeze()
             Ex = self.conv2padded((deepcopy(im), Gx))
             Ey = self.conv2padded((deepcopy(im), np.matrix(Gy).H))
@@ -268,29 +268,34 @@ class LGN():
 
         return e, el, ell
 
-def regress(y, design_matrix):
+def regress(y, design_matrix, zscore_y:bool=True, return_regression_object:bool=False):
+    # y = zscore(y)
     mask = np.isnan(y)
+    # y = y[~mask]
     x = design_matrix[~mask]
-    y = zscore(y[~mask])
+    y = y[~mask]
+    if zscore_y:
+        y = zscore(y)
     if x.shape[0] == 0 or y.shape[0] == 0:
-        # r2s.append(-1)
-        # continue
         return -1, 0
 
     lin_reg = LinearRegression().fit(x, y)
     r2 = lin_reg.score(x,y)
     beta = lin_reg.coef_
+
+    if return_regression_object:
+        return r2, beta, lin_reg
     return r2, beta
 
 
-def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
+def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
 
     result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache', verbose=False)
 
     lgn = LGN(config=config, default_config_path='/home/niklas/projects/lgnpy/lgnpy/CEandSC/default_config.yml')
 
-    # if verbose:
-    print(f"Computing LGN statistics for {file_name}")
+    if verbose_filename:
+        print(f"Computing LGN statistics for {file_name}")
     # Check if file exists
     file_name = f"results_{file_name}.npz"
     if file_name is not None and not force_recompute:
@@ -373,7 +378,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose: bool 
     beta = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
     gamma = np.zeros((im.shape[-1], 1+len(crop_masks), 2))
 
-    par1, par2, par3, mag1, mag2, mag3 = get_edge_maps(im, file_name, threshold_lgn, verbose, force_recompute, cache, result_manager, lgn, results, IMTYPE, imsize)
+    par1, par2, par3, mag1, mag2, mag3 = get_edge_maps(im=im, file_name=file_name, threshold_lgn=threshold_lgn, verbose=verbose, force_recompute=force_recompute, cache=cache, result_manager=result_manager, lgn=lgn, results=results, IMTYPE=IMTYPE, imsize=imsize)
 
     ##############
     # Compute Feature Energy and Spatial Coherence

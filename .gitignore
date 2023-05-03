@@ -1,3 +1,6 @@
 cache
 *.egg-info
 results
+__pycache__
+lgnpy/__pycache__
+lgnpy/CEandSC/__pycache__
