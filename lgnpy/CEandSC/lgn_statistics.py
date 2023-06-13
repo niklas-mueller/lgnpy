@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 from copy import deepcopy
 import yaml
 from scipy.stats import zscore
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from matplotlib.backends.backend_pdf import PdfPages
 from result_manager.result_manager import ResultManager
 
@@ -224,7 +224,7 @@ class LGN():
         return x
 
 
-    def filter_lgn(self, im, sigma):
+    def filter_lgn(self, im, sigma, coc:bool=True):
         # break_off_sigma = 3
         break_off_sigma = self.get_attr('break_off_sigma')
         filter_size = break_off_sigma * sigma
@@ -249,7 +249,12 @@ class LGN():
             ell = []
 
         else:
-            e, el, ell = self.rgb2e(im)
+            if coc:
+                e, el, ell = self.rgb2e(im)
+            else:
+                e = im[:, :, 0] / 255.0
+                el = im[:, :, 1] / 255.0
+                ell = im[:, :, 2] / 255.0
 
             # im = e
             Ex = self.conv2padded((deepcopy(e), Gx))
@@ -287,8 +292,27 @@ def regress(y, design_matrix, zscore_y:bool=True, return_regression_object:bool=
         return r2, beta, lin_reg
     return r2, beta
 
+def ridge_regress(y, design_matrix, zscore_y:bool=True, return_regression_object:bool=False):
+    # y = zscore(y)
+    mask = np.isnan(y)
+    # y = y[~mask]
+    x = design_matrix[~mask]
+    y = y[~mask]
+    if zscore_y:
+        y = zscore(y)
+    if x.shape[0] == 0 or y.shape[0] == 0:
+        return -1, 0
 
-def lgn_statistics(im, file_name:str, threshold_lgn, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
+    lin_reg = Ridge().fit(x, y)
+    r2 = lin_reg.score(x,y)
+    beta = lin_reg.coef_
+
+    if return_regression_object:
+        return r2, beta, lin_reg
+    return r2, beta
+
+
+def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
 
     result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache', verbose=False)
 

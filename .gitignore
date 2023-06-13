@@ -4,3 +4,6 @@ results
 __pycache__
 lgnpy/__pycache__
 lgnpy/CEandSC/__pycache__
+
+build
+build/*
