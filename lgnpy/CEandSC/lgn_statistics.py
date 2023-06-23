@@ -279,12 +279,16 @@ def regress(y, design_matrix, zscore_y:bool=True, return_regression_object:bool=
     # y = y[~mask]
     x = design_matrix[~mask]
     y = y[~mask]
+    lin_reg = LinearRegression()
     if zscore_y:
         y = zscore(y)
+        
     if x.shape[0] == 0 or y.shape[0] == 0:
+        if return_regression_object:
+            return -1, 0, lin_reg
         return -1, 0
 
-    lin_reg = LinearRegression().fit(x, y)
+    lin_reg.fit(x, y)
     r2 = lin_reg.score(x,y)
     beta = lin_reg.coef_
 
