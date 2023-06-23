@@ -1,7 +1,16 @@
+import os
+nproc = 5
+
+os.environ["OMP_NUM_THREADS"] = str(nproc)
+os.environ["OPENBLAS_NUM_THREADS"] = str(nproc)
+os.environ["MKL_NUM_THREADS"] = str(nproc)
+os.environ["VECLIB_MAXIMUM_THREADS"] = str(nproc)
+os.environ["NUMEXPR_NUM_THREADS"] = str(nproc)
+
 import tqdm
 import multiprocessing
 import cv2
-import os
+from PIL import Image
 from lgnpy.CEandSC.lgn_statistics import lgn_statistics
 from result_manager.result_manager import ResultManager
 from oads_access.utils import loadmat
@@ -16,6 +25,9 @@ def iterate(args):
     im = cv2.imread(os.path.join(folder, filename)) # Always loads images in BGR order
     im = im[:,:,::-1] # Reverse order to RGB
     im = cv2.resize(im, (0,0), fx=reduce_factor, fy=reduce_factor) 
+
+    # if not high_res:
+    # im = cv2.resize(src=im, dsize=imsize)
 
     if rgc:
         GCS = ToRetinalGanglionCellSampling(out_size=max(im.shape))

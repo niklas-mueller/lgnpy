@@ -316,11 +316,12 @@ def ridge_regress(y, design_matrix, zscore_y:bool=True, return_regression_object
     return r2, beta
 
 
-def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, cache:bool=True):
+def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, 
+                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas'):
 
-    result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache', verbose=False)
+    result_manager = ResultManager(root=f'{home_path}/projects/lgnpy/cache', verbose=False)
 
-    lgn = LGN(config=config, default_config_path='/home/niklas/projects/lgnpy/lgnpy/CEandSC/default_config.yml')
+    lgn = LGN(config=config, default_config_path=f'{home_path}/projects/lgnpy/lgnpy/CEandSC/default_config.yml')
 
     if verbose_filename:
         print(f"Computing LGN statistics for {file_name}")
