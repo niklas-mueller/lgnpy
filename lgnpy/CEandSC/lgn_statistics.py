@@ -316,8 +316,37 @@ def ridge_regress(y, design_matrix, zscore_y:bool=True, return_regression_object
     return r2, beta
 
 
+#######################################################
+# Set parameters for field of view
+#######################################################
+def get_field_of_view(lgn, imsize, viewing_dist):
+    # if viewing_dist is None:
+    #     viewing_dist = lgn.get_attr('viewing_dist')
+    dot_pitch = lgn.get_attr('dot_pitch')
+    fov_beta = lgn.get_attr('fov_beta')
+    fov_gamma = lgn.get_attr('fov_gamma')
+
+    fovx = round(imsize[1]/2)          # x-pixel loc. of fovea center
+    fovy = round(imsize[0]/2)          # y-pixel loc. of fovea center
+    # ex and ey are the x- and y- offsets of each pixel compared to
+    # the point of focus (fovx,fovy) in pixels.
+    ex, ey = np.meshgrid(np.arange(start=-fovx+1, stop=imsize[1]-fovx+1),
+                        np.arange(start=-fovy+1, stop=imsize[0]-fovy+1))
+    # eradius is the radial distance between each point and the point
+    # of gaze.  This is in meters.
+    eradius = dot_pitch * np.sqrt(ex**2+ey**2)
+    del ex, ey
+    # calculate ec, the eccentricity from the foveal center, for each
+    # point in the image.  ec is in degrees.
+    ec = 180*np.arctan(eradius / viewing_dist)/np.pi
+    # select the pixels that fall within the input visual field of view
+    imfovbeta = (ec < fov_beta)
+    imfovgamma = (ec < fov_gamma)
+
+    return imfovbeta, imfovgamma
+
 def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, 
-                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas'):
+                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas', ToRGC=lambda x: x):
 
     result_manager = ResultManager(root=f'{home_path}/projects/lgnpy/cache', verbose=False)
 
@@ -353,37 +382,12 @@ def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None,
 
     imsize = im.shape[:2]
 
-    #######################################################
-    # Set parameters for field of view
-    #######################################################
-    def get_field_of_view(lgn, imsize, viewing_dist):
-        # if viewing_dist is None:
-        #     viewing_dist = lgn.get_attr('viewing_dist')
-        dot_pitch = lgn.get_attr('dot_pitch')
-        fov_beta = lgn.get_attr('fov_beta')
-        fov_gamma = lgn.get_attr('fov_gamma')
-
-        fovx = round(imsize[1]/2)          # x-pixel loc. of fovea center
-        fovy = round(imsize[0]/2)          # y-pixel loc. of fovea center
-        # ex and ey are the x- and y- offsets of each pixel compared to
-        # the point of focus (fovx,fovy) in pixels.
-        ex, ey = np.meshgrid(np.arange(start=-fovx+1, stop=imsize[1]-fovx+1),
-                            np.arange(start=-fovy+1, stop=imsize[0]-fovy+1))
-        # eradius is the radial distance between each point and the point
-        # of gaze.  This is in meters.
-        eradius = dot_pitch * np.sqrt(ex**2+ey**2)
-        del ex, ey
-        # calculate ec, the eccentricity from the foveal center, for each
-        # point in the image.  ec is in degrees.
-        ec = 180*np.arctan(eradius / viewing_dist)/np.pi
-        # select the pixels that fall within the input visual field of view
-        imfovbeta = (ec < fov_beta)
-        imfovgamma = (ec < fov_gamma)
-
-        return imfovbeta, imfovgamma
+    
 
     viewing_dist = lgn.get_attr('viewing_dist')
     imfovbeta, imfovgamma = get_field_of_view(lgn=lgn, imsize=imsize, viewing_dist=viewing_dist)
+    imfovbeta = ToRGC(imfovbeta).astype(int)
+    imfovgamma = ToRGC(imfovgamma).astype(int)
 
     # We need adjusted imfovbeta, imfovgamma for the crops
     imfovbeta_crops = [[] for _ in range(len(crop_masks))]

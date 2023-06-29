@@ -1,5 +1,5 @@
 import os
-nproc = 5
+nproc = 10
 
 os.environ["OMP_NUM_THREADS"] = str(nproc)
 os.environ["OPENBLAS_NUM_THREADS"] = str(nproc)
@@ -20,20 +20,21 @@ import pandas as pd
 import numpy as np
 
 def iterate(args):
-    folder, filename, config, threshold_lgn, rgc, coc, reduce_factor = args
+    folder, filename, home_path, config, threshold_lgn, ToRGC, coc, reduce_factor = args
 
     im = cv2.imread(os.path.join(folder, filename)) # Always loads images in BGR order
     im = im[:,:,::-1] # Reverse order to RGB
-    im = cv2.resize(im, (0,0), fx=reduce_factor, fy=reduce_factor) 
+    if type(reduce_factor) is int:
+        im = cv2.resize(im, (0,0), fx=reduce_factor, fy=reduce_factor) 
+    elif type(reduce_factor) is tuple:
+        im = cv2.resize(im, reduce_factor) 
 
     # if not high_res:
     # im = cv2.resize(src=im, dsize=imsize)
 
-    if rgc:
-        GCS = ToRetinalGanglionCellSampling(out_size=max(im.shape))
-        im = GCS(im)
-
-    (ce, sc, beta, gamma) = lgn_statistics(im=im, coc=coc, config=config, file_name=None, force_recompute=True, cache=False, threshold_lgn=threshold_lgn, compute_extra_statistics=False, verbose_filename=False, verbose=False)
+    
+    (ce, sc, beta, gamma) = lgn_statistics(im=im, coc=coc, ToRGC=ToRGC, config=config, file_name=None, force_recompute=True, cache=False, threshold_lgn=threshold_lgn, 
+                                           compute_extra_statistics=False, verbose_filename=False, verbose=False, home_path=home_path)
 
     return filename, ce, sc, beta, gamma
 
@@ -67,7 +68,9 @@ def run_LGNstatistics(rgc, coc, reduce_factor=1, config={'fov_gamma':5, 'viewing
     # folder = '\\wsl.localhost\Ubuntu\home\niklas\projects\mouse_lgn\data\natural_scene_templates'
     # folder = '\\wsl.localhost\\Ubuntu\\home\\niklas\\projects\\data\\oads\\oads_arw\\tiff'
     home_path = os.path.expanduser('~')
-    folder = f'{home_path}/projects/data/oads/oads_arw/tiff/reduced'
+    folder = f'{home_path}/projects/data/oads/oads_arw/tiff'
+
+    
 
     # rgc = True
     # coc = True
@@ -80,7 +83,7 @@ def run_LGNstatistics(rgc, coc, reduce_factor=1, config={'fov_gamma':5, 'viewing
     #     'dot_pitch': 0.000276,
     # }
 
-    result_path = f'{home_path}/projects/lgnpy/results/larger_sc_ce'
+    result_path = f'{home_path}/projects/lgnpy/results/rgc_on_imfov'
 
     # if config['fov_gamma'] > 5:
     #     result_path = os.path.join(result_path, f'larger_sc-{str(config["fov_gamma"])}')
@@ -98,8 +101,8 @@ def run_LGNstatistics(rgc, coc, reduce_factor=1, config={'fov_gamma':5, 'viewing
     file_names = [x for x in os.listdir(folder) if x.split('.')[-1] in file_types]
 
     # Compute only for the images that were used in the experiment
-    experiment_filenames = os.listdir('/mnt/z/Projects/2023_Scholte_FMG1441/Stimuli/reduced')
-    file_names = [x for x in file_names if x in experiment_filenames]
+    # experiment_filenames = os.listdir('/mnt/z/Projects/2023_Scholte_FMG1441/Stimuli/reduced')
+    # file_names = [x for x in file_names if x in experiment_filenames]
 
     if sub is not None:
         epoch_filenames = []
@@ -132,8 +135,27 @@ def run_LGNstatistics(rgc, coc, reduce_factor=1, config={'fov_gamma':5, 'viewing
         # gamma_results.append(gamma)
         # filenames.append(file_name)
 
-    with multiprocessing.Pool(16) as pool:
-        results = list(tqdm.tqdm(pool.imap(iterate, [(folder, filename, config, threshold_lgn, rgc, coc, 1/reduce_factor) for filename in file_names]), total=len(file_names)))
+    out_size = None
+    im = cv2.imread(os.path.join(folder, file_names[0])) # Always loads images in BGR order
+    im = im[:,:,::-1] # Reverse order to RGB
+    if type(reduce_factor) is int:
+        im = cv2.resize(im, (0,0), fx=reduce_factor, fy=reduce_factor) 
+    elif type(reduce_factor) is tuple:
+        im = cv2.resize(im, reduce_factor)
+    out_size = max(np.array(im).shape[:2])
+
+    if rgc:
+        # GCS = ToRetinalGanglionCellSampling(out_size=max(im.shape))
+        # im = GCS(im)
+        ToRGC = ToRetinalGanglionCellSampling(out_size=out_size, image_shape=np.array(im).shape[:2], series=1)
+    else:
+        ToRGC = lambda x: x
+
+    if type(reduce_factor) is int:
+        reduce_factor = 1/reduce_factor
+
+    with multiprocessing.Pool(nproc) as pool:
+        results = list(tqdm.tqdm(pool.imap(iterate, [(folder, filename, home_path, config, threshold_lgn, ToRGC, coc, reduce_factor) for filename in file_names]), total=len(file_names)))
 
     for (filename, ce, sc, beta, gamma) in results:
         ce_results.append(ce)
@@ -149,8 +171,12 @@ def run_LGNstatistics(rgc, coc, reduce_factor=1, config={'fov_gamma':5, 'viewing
     # return (ce, sc, beta, gamma, filenames)
 
 if __name__ == '__main__':
-    run_LGNstatistics(rgc=True, coc=True, reduce_factor=4, config={'fov_gamma': 20, 'fov_beta': 3, 'viewing_dist': 2}, sub=[5,6])
+    run_LGNstatistics(rgc=True, coc=True, reduce_factor=(2155, 1440), config={'fov_gamma': 5, 'fov_beta': 1.5, 'viewing_dist': 2.5}, sub=[5,6,7,8])
     print(1)
+    # run_LGNstatistics(rgc=True, coc=True, reduce_factor=(1077, 720), config={'fov_gamma': 5, 'fov_beta': 1.5, 'viewing_dist': 1.3}, sub=[5,6,7,8])
+    # print(1)
+    # run_LGNstatistics(rgc=True, coc=True, reduce_factor=(538, 360), config={'fov_gamma': 5, 'fov_beta': 1.5, 'viewing_dist': 0.6}, sub=[5,6,7,8])
+    # print(1)
     # run_LGNstatistics(rgc=False, coc=True, reduce_factor=1, config={'fov_gamma': 5.5, 'fov_beta': 3, 'viewing_dist': 2}, sub=[5,6])
     # print(1)
 
