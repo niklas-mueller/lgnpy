@@ -8,6 +8,9 @@ from scipy.stats import zscore
 from sklearn.linear_model import LinearRegression, Ridge
 from matplotlib.backends.backend_pdf import PdfPages
 from result_manager.result_manager import ResultManager
+import mat73
+from scipy import io
+
 
 class LGN():
 
@@ -345,8 +348,47 @@ def get_field_of_view(lgn, imsize, viewing_dist):
 
     return imfovbeta, imfovgamma
 
+
+
+def loadmat(filepath: str, use_attrdict=True):
+    """Combined functionality of scipy.io.loadmat and mat73.loadmat in order to load any .mat version into a python dictionary.
+
+
+
+        Parameters
+        ----------
+        filepath: str
+            Path to file.
+
+        Returns
+        ----------
+        any | dict
+            Loaded datastructure.
+
+        Example
+        ----------
+        >>> data = config.loadmat(filepath)
+    """
+    try:
+        data = mat73.loadmat(filepath, use_attrdict=use_attrdict)
+        return data
+        # data = {}
+        # with h5py.File(filepath, 'r') as f:
+        #     for k in f.keys():
+        #         data[k] = dict(f.get(k))
+
+        #     return data
+
+    except (NotImplementedError, OSError, TypeError) as e:
+        print(
+            "Could not load mat file with mat73 - trying to load with scipy.io.loadmat!")
+        # if version is <7.2
+        data = io.loadmat(filepath)
+        return data
+
+
 def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, 
-                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas', ToRGC=lambda x: x):
+                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas', ToRGC=lambda x: x, fov_imsize:tuple=None):
 
     result_manager = ResultManager(root=f'{home_path}/projects/lgnpy/cache', verbose=False)
 
@@ -378,14 +420,17 @@ def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None,
     else:
         IMTYPE = 1
         # im = im.reshape((im.shape) + (1,))
-        # print(im.shape)        
+        # print(im.shape) 
+
+    if fov_imsize is None:
+        fov_imsize = im.shape[:2]
 
     imsize = im.shape[:2]
 
     
 
     viewing_dist = lgn.get_attr('viewing_dist')
-    imfovbeta, imfovgamma = get_field_of_view(lgn=lgn, imsize=imsize, viewing_dist=viewing_dist)
+    imfovbeta, imfovgamma = get_field_of_view(lgn=lgn, imsize=fov_imsize, viewing_dist=viewing_dist)
     imfovbeta = ToRGC(imfovbeta).astype(int)
     imfovgamma = ToRGC(imfovgamma).astype(int)
 
