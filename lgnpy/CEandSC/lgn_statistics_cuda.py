@@ -6,7 +6,6 @@ from scipy.interpolate import interp1d
 from copy import deepcopy
 
 from matplotlib.backends.backend_pdf import PdfPages
-from result_manager.result_manager import ResultManager
 
 
 def weibullNewtonHist(g, x, h):
@@ -252,14 +251,14 @@ def filter_lgn(im, sigma):
 
 
 def lgn_statistics_cuda(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pitch=0.00035, fov_beta=1.5, fov_gamma=5, 
-                    verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False):
+                    verbose: bool = False, compute_extra_statistics: bool = False, crop_masks: list = [], force_recompute:bool=False, result_manager=None):
 
-    result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache')
+    # result_manager = ResultManager(root='/home/niklas/projects/lgnpy/cache')
 
     print(f"Computing LGN statistics for {file_name}")
     # Check if file exists
     file_name = f"results_{file_name}.npy"
-    if file_name is not None and not force_recompute:
+    if file_name is not None and not force_recompute and result_manager is not None:
         try:
             results = result_manager.load_result(filename=file_name)
         except:
@@ -407,7 +406,8 @@ def lgn_statistics_cuda(im, file_name:str, threshold_lgn, viewing_dist=1, dot_pi
 
     
         results = np.array((par1, par2, par3, mag1, mag2, mag3))
-        result_manager.save_result(result=results, filename=file_name, overwrite=True)
+        if result_manager is not None:
+            result_manager.save_result(result=results, filename=file_name, overwrite=True)
         print('Done saving')
         del results
     else:

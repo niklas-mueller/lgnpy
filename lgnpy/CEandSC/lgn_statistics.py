@@ -7,7 +7,6 @@ import yaml
 from scipy.stats import zscore
 from sklearn.linear_model import LinearRegression, Ridge
 from matplotlib.backends.backend_pdf import PdfPages
-from result_manager.result_manager import ResultManager
 import mat73
 from scipy import io
 
@@ -388,9 +387,9 @@ def loadmat(filepath: str, use_attrdict=True):
 
 
 def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None, verbose_filename:bool = True, verbose: bool = False, compute_extra_statistics: bool = False, 
-                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas', ToRGC=lambda x: x, fov_imsize:tuple=None):
+                   crop_masks: list = [], force_recompute:bool=False, cache:bool=True, home_path:str='/home/niklas', ToRGC=lambda x: x, fov_imsize:tuple=None, result_manager=None):
 
-    result_manager = ResultManager(root=f'{home_path}/projects/lgnpy/cache', verbose=False)
+    # result_manager = ResultManager(root=f'{home_path}/projects/lgnpy/cache', verbose=False)
 
     lgn = LGN(config=config, default_config_path=f'{home_path}/projects/lgnpy/lgnpy/CEandSC/default_config.yml')
 
@@ -398,7 +397,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None,
         print(f"Computing LGN statistics for {file_name}")
     # Check if file exists
     file_name = f"results_{file_name}.npz"
-    if file_name is not None and not force_recompute:
+    if file_name is not None and not force_recompute and result_manager is not None:
         try:
             results = result_manager.load_result(filename=file_name)
         except:
@@ -648,7 +647,7 @@ def lgn_statistics(im, file_name:str, threshold_lgn, coc:bool=True, config=None,
 
     return (ce, sc, beta, gamma)
 
-def get_edge_maps(im, file_name, threshold_lgn, lgn, IMTYPE, imsize, verbose:bool=False, force_recompute:bool=False, results=None, cache:bool=False, result_manager:ResultManager=None):
+def get_edge_maps(im, file_name, threshold_lgn, lgn, IMTYPE, imsize, verbose:bool=False, force_recompute:bool=False, results=None, cache:bool=False, result_manager=None):
     if force_recompute or results is None:
         ######
         # Computing edges
@@ -734,7 +733,7 @@ def get_edge_maps(im, file_name, threshold_lgn, lgn, IMTYPE, imsize, verbose:boo
                         mag3[index3] = minm3[index3]
 
     
-        if cache:
+        if cache and result_manager is not None:
             # results = np.array((par1, par2, par3, mag1, mag2, mag3))
             # result_manager.save_result(result=results, filename=file_name, overwrite=True)
             results = {"par1": par1, "par2": par2, "par3": par3, "mag1": mag1, "mag2": mag2, "mag3": mag3}
